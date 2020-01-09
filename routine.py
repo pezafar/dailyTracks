@@ -21,30 +21,31 @@ def getSuggested(videoID, numberResults, iterations, idList, titleList, scoreLis
         title = x['snippet']['title']
         id = x['id']['videoId']
 
-        if (id not in idList):    
-            #Add id and title to the lists            
-            titleList.append(title)
-            idList.append(id)
+        if (id not in idList): 
+            try:   
+                #Gather viewCout, commentCount and compute score
+                request = "https://www.googleapis.com/youtube/v3/videos?part=statistics&fields=items(statistics(viewCount,commentCount))&id="+id+"&" + keyParam
+                response = requests.get(request)
 
-            #Gather viewCout, commentCount and compute score
-            request = "https://www.googleapis.com/youtube/v3/videos?part=statistics&fields=items(statistics(viewCount,commentCount))&id="+id+"&" + keyParam
-            response = requests.get(request)
-
-            if (response.status_code != 200):
-                print("Error in youtube API request")
-                return
-            try:
+                if (response.status_code != 200):
+                    print("Error in youtube API request")
+                    
                 j =  json.loads( response.content.decode('utf-8'))
+
+                viewCount = int( j['items'][0]['statistics']['viewCount'])
+                commentCount = int( j['items'][0]['statistics']['commentCount'])
+                score = commentCount/viewCount
+                
+                #Add id and title and score to the lists            
+                titleList.append(title)
+                idList.append(id)
+                scoreList.append(score)
+
+                #recursion
+                getSuggested(idList[-1], numberResults,iterations-1, idList, titleList, scoreList, key)
+
             except:
-                print("Error loading Json")
-
-            viewCount = int( j['items'][0]['statistics']['viewCount'])
-            commentCount = int( j['items'][0]['statistics']['commentCount'])
-            score = commentCount/viewCount
-            scoreList.append(score)
-
-            #recursion
-            getSuggested(idList[-1], numberResults,iterations-1, idList, titleList, scoreList, key)
+                print("error in id ", id)
 
 def startRoutine():
     #Youtube API token located in file
@@ -55,16 +56,22 @@ def startRoutine():
         print ("Error loading API token in :", API_FILE)
         return
 
+    try:
+        
+        startVideos = getStartingElements()
+        if(len(startVideos) == 0):
+            print("no selection")
+            return
+    except:
+        print("error loading starting video ids")
+
     titles = []
     ids = []
     scores = []
 
     #initial videos
-    idInit = "yAv5pLO37mE"
-    #start
-    getSuggested(idInit,2,5,ids, titles, scores, API_KEY)
-
-
+    for start in startVideos:
+        getSuggested(start,2,2,ids, titles, scores, API_KEY)
 
     #Format and save
     indices = np.argsort(np.array(scores))
@@ -86,4 +93,11 @@ def startRoutine():
         json.dump(suggestions,f, indent=4)
 
 
-startRoutine()
+def getStartingElements():
+    try:
+        with open("selection.json", "r", encoding='utf-8') as f:
+            start = json.load(f)
+            return(start)
+    except :
+        print ("Error loading starting ids :", API_FILE)
+        return
